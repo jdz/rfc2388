@@ -1,5 +1,4 @@
-;;; -*- mode: LISP; package: RFC2388 -*-
-
+;;;; -*- mode: LISP; package: RFC2388 -*-
 ;;;; Copyright (c) 2003 Janis Dzerins
 ;;;; 
 ;;;; Redistribution and use in source and binary forms, with or without
@@ -21,26 +20,7 @@
 ;;;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 ;;;; THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-(defpackage :rfc2388
-  (:use :common-lisp)
-  (:export
-   ;;#:read-until-next-boundary
-
-   #:parse-header
-   #:header
-   #:header-name
-   #:header-value
-   #:header-parameters
-
-   #:parse-mime
-   #:mime-part
-   #:mime-part-contents
-   #:mime-part-headers))
-
-
 (in-package :rfc2388)
-
-
 
 (defun lwsp-char-p (char)
   "Returns true if CHAR is a linear-whitespace-char (LWSP-char).  Either
@@ -48,22 +28,17 @@
   (or (char= char #\space)
       (char= char #\tab)))
 
-
-
-
 ;;; *** This actually belongs to RFC2046
 ;;; 
 (defun read-until-next-boundary (stream boundary &optional discard)
   "Reads from STREAM up to the next boundary.  Returns two values: read
    data (nil if DISCARD is true), and true if the boundary is not last
    (i.e., there's more data)."
-  
   ;; Read until [CRLF]--boundary[--][transport-padding]CRLF
   ;; States:     1 2  345        67  8                 9 10
   ;;
   ;; *** This will WARN like crazy on some bad input -- should only do each
   ;; warning once.
-  
   (let ((length (length boundary)))
     (unless (<= 1 length 70)
       (warn "Boundary has invalid length -- must be between 1 and 70, but is: ~S" length))
@@ -209,11 +184,8 @@
           (values (get-output-stream-string stream)
                   closed)))))
 
-
-
-;;; Header parsing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Header parsing
 
 (defstruct (header (:type list)
                    (:constructor make-header (name value parameters)))
@@ -221,21 +193,20 @@
   value
   parameters)
 
-
-
 (defun skip-linear-whitespace (string &key (start 0) end)
   "Returns the position of first non-linear-whitespace character in STRING
    bound by START and END."
   (position-if-not #'lwsp-char-p string :start start :end end))
 
+(defgeneric parse-header (source &optional start-state)
+  (:documentation "Parses SOURCE and returs a single MIME header.
 
+Header is a list of the form (NAME VALUE PARAMETERS), PARAMETERS
+is a list of (NAME . VALUE)"))
 
 (defmethod parse-header ((source string) &optional (start-state :name))
   (with-input-from-string (in source)
     (parse-header in start-state)))
-
-
-
 
 ;;; *** I don't like this parser -- it will have to be rewritten when I
 ;;; make my state-machine parser-generator macro!
@@ -250,7 +221,6 @@
         (result (make-string-output-stream))
         char
         (leave-char nil)
-
         name
         value
         parameter-name
@@ -369,38 +339,27 @@
         nil
         (make-header name value parameters))))
 
-
-
 (defgeneric parse-mime (source boundary)
   (:documentation
    "Parses MIME entities, returning them as a list.  Each element in the
-    list is of form: (body . header*), where BODY is the contents of MIME
+    list is of form: (body headers), where BODY is the contents of MIME
     part, and HEADERS are all headers for that part.  BOUNDARY is a string
     used to separate MIME entities."))
-
-
 
 (defstruct (mime-part (:type list)
                       (:constructor make-mime-part (contents headers)))
   contents
   headers)
 
-
-
 (defmethod parse-mime ((input string) separator)
   (with-input-from-string (stream input)
     (parse-mime stream separator)))
 
-
-
-
 (defmethod parse-mime ((input stream) boundary)
-
   ;; Find the first boundary.  Return immediately if it is also the last
   ;; one.
   (unless (nth-value 1 (read-until-next-boundary input boundary t))
     (return-from parse-mime nil))
-  
   (let ((result ()))
     (loop
       (let ((headers (loop
@@ -413,4 +372,3 @@
           (when (not more)
             (return)))))
     (nreverse result)))
-
