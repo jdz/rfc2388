@@ -223,7 +223,7 @@
 
 
 
-(defun skip-linear-whitespace (string &key start end)
+(defun skip-linear-whitespace (string &key (start 0) end)
   "Returns the position of first non-linear-whitespace character in STRING
    bound by START and END."
   (position-if-not #'lwsp-char-p string :start start :end end))
