@@ -23,15 +23,20 @@
 (defpackage :rfc2388
   (:use :common-lisp)
   (:export
-   ;;#:read-until-next-boundary
-
    #:parse-header
    #:header
    #:header-name
    #:header-value
    #:header-parameters
 
+   #:content-type
+   #:find-header
+   #:find-parameter
+   #:find-content-disposition-header
+   #:get-file-name
+
    #:parse-mime
    #:mime-part
    #:mime-part-contents
-   #:mime-part-headers))
+   #:mime-part-headers
+   #:make-mime-part))

@@ -1,5 +1,6 @@
 ;;;; -*- mode: LISP; package: RFC2388 -*-
 ;;;; Copyright (c) 2003 Janis Dzerins
+;;;; Modifications for TBNL Copyright (c) 2004 Michael Weber and Dr. Edmund Weitz
 ;;;; 
 ;;;; Redistribution and use in source and binary forms, with or without
 ;;;; modification, are permitted provided that the following conditions
@@ -22,15 +23,21 @@
 
 (in-package :rfc2388)
 
+
+
+;;; Utility functions
+
+
 (defun lwsp-char-p (char)
   "Returns true if CHAR is a linear-whitespace-char (LWSP-char).  Either
    space or tab, in short."
   (or (char= char #\space)
       (char= char #\tab)))
 
+
 ;;; *** This actually belongs to RFC2046
 ;;; 
-(defun read-until-next-boundary (stream boundary &optional discard)
+(defun read-until-next-boundary (stream boundary &optional discard out-stream)
   "Reads from STREAM up to the next boundary.  Returns two values: read
    data (nil if DISCARD is true), and true if the boundary is not last
    (i.e., there's more data)."
@@ -39,6 +46,7 @@
   ;;
   ;; *** This will WARN like crazy on some bad input -- should only do each
   ;; warning once.
+  
   (let ((length (length boundary)))
     (unless (<= 1 length 70)
       (warn "Boundary has invalid length -- must be between 1 and 70, but is: ~S" length))
@@ -179,13 +187,21 @@
     (if discard
         (let ((stream (make-broadcast-stream)))
           (values nil (run stream)))
-        (let* ((stream (make-string-output-stream))
+        (let* ((stream (or out-stream (make-string-output-stream)))
                (closed (run stream)))
-          (values (get-output-stream-string stream)
+          (values (or out-stream (get-output-stream-string stream))
                   closed)))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;; Header parsing
+
+(defun make-tmp-file-name ()
+  (if (find-package :tbnl)
+      (funcall (find-symbol "MAKE-TMP-FILE-NAME" :tbnl))
+      (error "WRITE-CONTENT-TO-FILE keyword argument to PARSE-MIME is supported in TBNL only at the moment.")))
+
+
+
+;;; Header parsing
+
 
 (defstruct (header (:type list)
                    (:constructor make-header (name value parameters)))
@@ -193,10 +209,12 @@
   value
   parameters)
 
+
 (defun skip-linear-whitespace (string &key (start 0) end)
   "Returns the position of first non-linear-whitespace character in STRING
    bound by START and END."
   (position-if-not #'lwsp-char-p string :start start :end end))
+
 
 (defgeneric parse-header (source &optional start-state)
   (:documentation "Parses SOURCE and returs a single MIME header.
@@ -204,9 +222,11 @@
 Header is a list of the form (NAME VALUE PARAMETERS), PARAMETERS
 is a list of (NAME . VALUE)"))
 
+
 (defmethod parse-header ((source string) &optional (start-state :name))
   (with-input-from-string (in source)
     (parse-header in start-state)))
+
 
 ;;; *** I don't like this parser -- it will have to be rewritten when I
 ;;; make my state-machine parser-generator macro!
@@ -266,7 +286,7 @@ is a list of (NAME . VALUE)"))
                  (setq leave-char t))))
         
         #-(and)
-        (format t "~&S:~D,'0D CH:~:[~;*~]~S~%"
+        (format t "~&S:~,'0D CH:~:[~;*~]~S~%"
                 state leave-char char)
         
         (ecase state
@@ -339,36 +359,137 @@ is a list of (NAME . VALUE)"))
         nil
         (make-header name value parameters))))
 
-(defgeneric parse-mime (source boundary)
+
+
+;;; _The_ MIME parsing
+
+
+(defgeneric parse-mime (source boundary &key recursive-p write-content-to-file)
   (:documentation
    "Parses MIME entities, returning them as a list.  Each element in the
     list is of form: (body headers), where BODY is the contents of MIME
     part, and HEADERS are all headers for that part.  BOUNDARY is a string
     used to separate MIME entities."))
 
+
+(defstruct (content-type (:type list)
+			 (:constructor make-content-type (super sub)))
+  super
+  sub)
+
+
+(defun parse-content-type (string)
+  "Returns content-type which is parsed from STRING."
+  (let ((sep-offset (position #\/ string))
+	(type (array-element-type string)))
+    (if (numberp sep-offset)
+	(make-content-type (make-array sep-offset
+				       :element-type type
+				       :displaced-to string)
+			   (make-array (- (length string) (incf sep-offset)) 
+				       :element-type type
+				       :displaced-to string
+				       :displaced-index-offset sep-offset))
+	(make-content-type string nil))))
+
+
+(defun unparse-content-type (ct)
+  "Returns content-type CT in string representation."
+  (let ((super (content-type-super ct))
+	(sub (content-type-sub ct)))
+    (cond ((and super sub)
+	   (concatenate 'string super "/" sub))
+	  (t (or super "")))))
+
 (defstruct (mime-part (:type list)
                       (:constructor make-mime-part (contents headers)))
   contents
   headers)
 
-(defmethod parse-mime ((input string) separator)
-  (with-input-from-string (stream input)
-    (parse-mime stream separator)))
 
-(defmethod parse-mime ((input stream) boundary)
+(defmethod parse-mime ((input string) separator &key (recursive-p t) (write-content-to-file t))
+  (with-input-from-string (stream input)
+    (parse-mime stream separator :recursive-p recursive-p :write-content-to-file write-content-to-file)))
+
+
+(defmethod parse-mime ((input stream) boundary &key (recursive-p t) (write-content-to-file t))
   ;; Find the first boundary.  Return immediately if it is also the last
   ;; one.
   (unless (nth-value 1 (read-until-next-boundary input boundary t))
     (return-from parse-mime nil))
-  (let ((result ()))
+  
+  (let ((result ())
+	content-type-header)
     (loop
       (let ((headers (loop
-                       for header = (parse-header input)
-                       while header
-                       collect header)))
-        (multiple-value-bind (text more)
-            (read-until-next-boundary input boundary)
-          (push (make-mime-part text headers) result)
-          (when (not more)
-            (return)))))
+		      for header = (parse-header input)
+		      while header
+		      when (string-equal "CONTENT-TYPE" (header-name header))
+		      do (setf content-type-header header 
+			       (header-value header) (parse-content-type (header-value header)))
+		      collect header)))
+	(if (and recursive-p 
+		 (string-equal "MULTIPART" (content-type-super (header-value content-type-header))))
+	    (let ((boundary (cdr (find-parameter "BOUNDARY" (header-parameters content-type-header)))))
+	      (push (make-mime-part (parse-mime input boundary) headers) result))
+            (let ((file-name (get-file-name headers)))
+              (cond ((and write-content-to-file
+                          file-name)
+                     (let ((temp-file (make-tmp-file-name)))
+                       (multiple-value-bind (text more)
+                           (with-open-file (out-file (ensure-directories-exist temp-file)
+                                                     :direction :output
+                                                     ;; external format for faithful I/O
+                                                     ;; see <http://cl-cookbook.sourceforge.net/io.html#faith>
+                                                     #+(or :lispworks :allegro)
+                                                     :external-format
+                                                     #+:lispworks '(:latin-1 :eol-style :lf)
+                                                     #+:allegro (excl:crlf-base-ef :latin1))
+                             (read-until-next-boundary input boundary nil out-file))
+                         (declare (ignore text))
+                         (when (and (stringp file-name)
+                                    (plusp (length file-name)))
+                           (push (make-mime-part temp-file headers) result))
+                         (when (not more)
+                           (return)))))
+                    (t
+                     (multiple-value-bind (text more)
+                         (read-until-next-boundary input boundary)
+                       (push (make-mime-part text headers) result)
+                       (when (not more)
+                         (return)))))))))
     (nreverse result)))
+
+
+(defun find-header (label headers)
+  "Find header by label from set of headers."
+  (find label headers :key #'rfc2388:header-name :test #'string-equal))
+
+
+(defun find-parameter (name params)
+  "Find header parameter by name from set of parameters."
+  (assoc name params :test #'string-equal))
+
+
+(defun content-type (part &key as-string)
+  "Returns the Content-Type header of mime-part PART."
+  (let ((header (find-header "CONTENT-TYPE" (mime-part-headers part))))
+    (if header
+	(if as-string
+	    (or (unparse-content-type (header-value header)) "")
+	    (header-value header))
+	(when as-string ""))))
+
+
+(defun find-content-disposition-header (headers)
+  (find-if (lambda (header) 
+             (and (string-equal "CONTENT-DISPOSITION" 
+                                (rfc2388:header-name header))
+                  (string-equal "FORM-DATA" 
+                                (rfc2388:header-value header))))
+           headers))
+
+
+(defun get-file-name (headers)
+  (cdr (find-parameter "FILENAME"
+                       (header-parameters (find-content-disposition-header headers)))))
