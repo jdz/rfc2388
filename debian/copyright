@@ -1,0 +1,17 @@
+This package was debianized by Luca Capello <luca@pca.it> on
+Tue,  5 Apr 2005 13:17:14 +0100.
+
+It was downloaded from ftp://common-lisp.net/pub/project/rfc2388/
+
+Upstream Author:   Janis Dzerins <jdz@dir.lv>
+
+Copyright;
+
+This software is licensed under the terms of the BSD license,
+which can be found on Debian systems in the file
+/usr/share/common-licenses/BSD or from
+http://www.opensource.org/licenses/bsd-license.php
+
+The license was modified to reflect that Janis Dzerins, not the
+Regents of the University of California, is the author.
+
