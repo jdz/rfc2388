@@ -20,6 +20,8 @@
 ;;;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 ;;;; THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+(in-package :cl-user)
+
 (defpackage :rfc2388
   (:use :common-lisp)
   (:export
