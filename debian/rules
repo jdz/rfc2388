@@ -52,7 +52,7 @@ binary-indep: build install
 binary-arch: build install
 	dh_testdir
 	dh_testroot
-	dh_installdocs
+	dh_installdocs doc/rfc2388.txt
 	dh_installchangelogs
 #	dh_installemacsen
 #	dh_installexamples
