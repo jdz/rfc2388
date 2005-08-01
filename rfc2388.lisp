@@ -62,6 +62,7 @@
                  (boundary-length (length boundary))
                  (closed nil)
                  (queued-chars (make-string 4))
+                 (queued-dashes 0)
                  (queue-index 0)
                  char
                  (leave-char nil))
@@ -70,7 +71,12 @@
                       (dotimes (i queue-index)
                         (write-char (schar queued-chars i) result))
                       (setf queue-index 0))
-                    
+
+                    (write-dashes ()
+                      (dotimes (i queued-dashes)
+                        (write-char #\- result))
+                      (setf queued-dashes 0))
+
                     (enqueue-char ()
                       (setf (schar queued-chars queue-index) char)
                       (incf queue-index)))
@@ -86,8 +92,8 @@
                    (return))
 
                   #-(and)
-                  (format t "~&S:~D BI:~2,'0D CH:~:[~;*~]~S~%"
-                          state boundary-index leave-char char)
+                  (format t "~&S:~D QI:~D BI:~2,'0D CH:~:[~;*~]~S~%"
+                          state queue-index boundary-index leave-char char)
 
                  (case state
                    (1 ;; optional starting CR
@@ -109,38 +115,34 @@
                            (setq leave-char t
                                  state 1))))
 
-                   (3 ;; first dash in dash-boundary
+                   (3 ;; dashes
                     (cond ((char= char #\-)
-                           (enqueue-char)
-                           (setq state 4))
-                          ((char= char #\return)
-                           (write-queued-chars)
-                           (enqueue-char)
-                           (setq state 2))
+                           (incf queued-dashes))
+                          
+                          ((<= 2 queued-dashes)
+                           (setf leave-char t
+                                 state 5))
                           (t
                            (write-queued-chars)
-                           (write-char char result)
-                           (setq state 1))))
-
-                   (4 ;; second dash in dash-boundary
-                    (cond ((char= char #\-)
-                           (enqueue-char)
-                           (setq state 5))
-                          (t
-                           (write-queued-chars)
-                           (write-char char result)
-                           (setq state 1))))
+                           (write-dashes)
+                           (setq leave-char t
+                                 state 1))))
 
                    (5 ;; boundary
                     (cond ((char= char (schar boundary boundary-index))
                            (incf boundary-index)
                            (when (= boundary-index boundary-length)
+                             (decf queued-dashes 2)
+                             (unless (zerop queued-dashes)
+                               (write-queued-chars)
+                               (write-dashes))
                              (setq state 6)))
                           (t
                            (write-queued-chars)
+                           (write-dashes)
                            (write-sequence boundary result :end boundary-index)
-                           (write-char char result)
                            (setq boundary-index 0
+                                 leave-char t
                                  state 1))))
 
                    (6 ;; first dash in close-delimiter
@@ -375,7 +377,7 @@ is a list of (NAME . VALUE)"))
 
 
 (defstruct (content-type (:type list)
-			 (:constructor make-content-type (super sub)))
+                         (:constructor make-content-type (super sub)))
   super
   sub)
 
@@ -383,25 +385,25 @@ is a list of (NAME . VALUE)"))
 (defun parse-content-type (string)
   "Returns content-type which is parsed from STRING."
   (let ((sep-offset (position #\/ string))
-	(type (array-element-type string)))
+        (type (array-element-type string)))
     (if (numberp sep-offset)
-	(make-content-type (make-array sep-offset
-				       :element-type type
-				       :displaced-to string)
-			   (make-array (- (length string) (incf sep-offset)) 
-				       :element-type type
-				       :displaced-to string
-				       :displaced-index-offset sep-offset))
-	(make-content-type string nil))))
+        (make-content-type (make-array sep-offset
+                                       :element-type type
+                                       :displaced-to string)
+                           (make-array (- (length string) (incf sep-offset)) 
+                                       :element-type type
+                                       :displaced-to string
+                                       :displaced-index-offset sep-offset))
+        (make-content-type string nil))))
 
 
 (defun unparse-content-type (ct)
   "Returns content-type CT in string representation."
   (let ((super (content-type-super ct))
-	(sub (content-type-sub ct)))
+        (sub (content-type-sub ct)))
     (cond ((and super sub)
-	   (concatenate 'string super "/" sub))
-	  (t (or super "")))))
+           (concatenate 'string super "/" sub))
+          (t (or super "")))))
 
 (defstruct (mime-part (:type list)
                       (:constructor make-mime-part (contents headers)))
@@ -421,19 +423,19 @@ is a list of (NAME . VALUE)"))
     (return-from parse-mime nil))
   
   (let ((result ())
-	content-type-header)
+        content-type-header)
     (loop
       (let ((headers (loop
-		      for header = (parse-header input)
-		      while header
-		      when (string-equal "CONTENT-TYPE" (header-name header))
-		      do (setf content-type-header header 
-			       (header-value header) (parse-content-type (header-value header)))
-		      collect header)))
-	(if (and recursive-p 
-		 (string-equal "MULTIPART" (content-type-super (header-value content-type-header))))
-	    (let ((boundary (cdr (find-parameter "BOUNDARY" (header-parameters content-type-header)))))
-	      (push (make-mime-part (parse-mime input boundary) headers) result))
+                      for header = (parse-header input)
+                      while header
+                      when (string-equal "CONTENT-TYPE" (header-name header))
+                      do (setf content-type-header header 
+                               (header-value header) (parse-content-type (header-value header)))
+                      collect header)))
+        (if (and recursive-p 
+                 (string-equal "MULTIPART" (content-type-super (header-value content-type-header))))
+            (let ((boundary (cdr (find-parameter "BOUNDARY" (header-parameters content-type-header)))))
+              (push (make-mime-part (parse-mime input boundary) headers) result))
             (let ((file-name (get-file-name headers)))
               (cond ((and write-content-to-file
                           file-name)
@@ -477,10 +479,10 @@ is a list of (NAME . VALUE)"))
   "Returns the Content-Type header of mime-part PART."
   (let ((header (find-header "CONTENT-TYPE" (mime-part-headers part))))
     (if header
-	(if as-string
-	    (or (unparse-content-type (header-value header)) "")
-	    (header-value header))
-	(when as-string ""))))
+        (if as-string
+            (or (unparse-content-type (header-value header)) "")
+            (header-value header))
+        (when as-string ""))))
 
 
 (defun find-content-disposition-header (headers)
