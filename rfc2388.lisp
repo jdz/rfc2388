@@ -50,10 +50,8 @@
   (let ((length (length boundary)))
     (unless (<= 1 length 70)
       (warn "Boundary has invalid length -- must be between 1 and 70, but is: ~S" length))
-    (let ((last-char (schar boundary (1- length))))
-      (when (or (char= last-char #\space)
-                (char= last-char #\tab))
-        (warn "Boundary has trailing whitespace: ~S" boundary))))
+    (when (lwsp-char-p (schar boundary (1- length)))
+      (warn "Boundary has trailing whitespace: ~S" boundary)))
   
   (flet ((run (result)
            "This one writes everything up to a boundary to RESULT stream,
@@ -87,9 +85,9 @@
                    (setq closed t)
                    (return))
 
-                 #-(and)
-                 (format t "~&S:~D BI:~2,'0D CH:~:[~;*~]~S~%"
-                         state boundary-index leave-char char)
+                  #-(and)
+                  (format t "~&S:~D BI:~2,'0D CH:~:[~;*~]~S~%"
+                          state boundary-index leave-char char)
 
                  (case state
                    (1 ;; optional starting CR
@@ -108,13 +106,17 @@
                            (setq state 3))
                           (t
                            (write-queued-chars)
-                           (write-char char result)
-                           (setq state 1))))
+                           (setq leave-char t
+                                 state 1))))
 
                    (3 ;; first dash in dash-boundary
                     (cond ((char= char #\-)
                            (enqueue-char)
                            (setq state 4))
+                          ((char= char #\return)
+                           (write-queued-chars)
+                           (enqueue-char)
+                           (setq state 2))
                           (t
                            (write-queued-chars)
                            (write-char char result)
