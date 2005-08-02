@@ -50,10 +50,8 @@
   (let ((length (length boundary)))
     (unless (<= 1 length 70)
       (warn "Boundary has invalid length -- must be between 1 and 70, but is: ~S" length))
-    (let ((last-char (schar boundary (1- length))))
-      (when (or (char= last-char #\space)
-                (char= last-char #\tab))
-        (warn "Boundary has trailing whitespace: ~S" boundary))))
+    (when (lwsp-char-p (schar boundary (1- length)))
+      (warn "Boundary has trailing whitespace: ~S" boundary)))
   
   (flet ((run (result)
            "This one writes everything up to a boundary to RESULT stream,
@@ -87,9 +85,9 @@
                    (setq closed t)
                    (return))
 
-                 #-(and)
-                 (format t "~&S:~D BI:~2,'0D CH:~:[~;*~]~S~%"
-                         state boundary-index leave-char char)
+                  #-(and)
+                  (format t "~&S:~D QI:~D BI:~2,'0D CH:~:[~;*~]~S~%"
+                          state queue-index boundary-index leave-char char)
 
                  (case state
                    (1 ;; optional starting CR
@@ -373,7 +371,7 @@ is a list of (NAME . VALUE)"))
 
 
 (defstruct (content-type (:type list)
-			 (:constructor make-content-type (super sub)))
+                         (:constructor make-content-type (super sub)))
   super
   sub)
 
@@ -381,25 +379,25 @@ is a list of (NAME . VALUE)"))
 (defun parse-content-type (string)
   "Returns content-type which is parsed from STRING."
   (let ((sep-offset (position #\/ string))
-	(type (array-element-type string)))
+        (type (array-element-type string)))
     (if (numberp sep-offset)
-	(make-content-type (make-array sep-offset
-				       :element-type type
-				       :displaced-to string)
-			   (make-array (- (length string) (incf sep-offset)) 
-				       :element-type type
-				       :displaced-to string
-				       :displaced-index-offset sep-offset))
-	(make-content-type string nil))))
+        (make-content-type (make-array sep-offset
+                                       :element-type type
+                                       :displaced-to string)
+                           (make-array (- (length string) (incf sep-offset)) 
+                                       :element-type type
+                                       :displaced-to string
+                                       :displaced-index-offset sep-offset))
+        (make-content-type string nil))))
 
 
 (defun unparse-content-type (ct)
   "Returns content-type CT in string representation."
   (let ((super (content-type-super ct))
-	(sub (content-type-sub ct)))
+        (sub (content-type-sub ct)))
     (cond ((and super sub)
-	   (concatenate 'string super "/" sub))
-	  (t (or super "")))))
+           (concatenate 'string super "/" sub))
+          (t (or super "")))))
 
 (defstruct (mime-part (:type list)
                       (:constructor make-mime-part (contents headers)))
@@ -419,19 +417,19 @@ is a list of (NAME . VALUE)"))
     (return-from parse-mime nil))
   
   (let ((result ())
-	content-type-header)
+        content-type-header)
     (loop
       (let ((headers (loop
-		      for header = (parse-header input)
-		      while header
-		      when (string-equal "CONTENT-TYPE" (header-name header))
-		      do (setf content-type-header header 
-			       (header-value header) (parse-content-type (header-value header)))
-		      collect header)))
-	(if (and recursive-p 
-		 (string-equal "MULTIPART" (content-type-super (header-value content-type-header))))
-	    (let ((boundary (cdr (find-parameter "BOUNDARY" (header-parameters content-type-header)))))
-	      (push (make-mime-part (parse-mime input boundary) headers) result))
+                      for header = (parse-header input)
+                      while header
+                      when (string-equal "CONTENT-TYPE" (header-name header))
+                      do (setf content-type-header header 
+                               (header-value header) (parse-content-type (header-value header)))
+                      collect header)))
+        (if (and recursive-p 
+                 (string-equal "MULTIPART" (content-type-super (header-value content-type-header))))
+            (let ((boundary (cdr (find-parameter "BOUNDARY" (header-parameters content-type-header)))))
+              (push (make-mime-part (parse-mime input boundary) headers) result))
             (let ((file-name (get-file-name headers)))
               (cond ((and write-content-to-file
                           file-name)
@@ -475,10 +473,10 @@ is a list of (NAME . VALUE)"))
   "Returns the Content-Type header of mime-part PART."
   (let ((header (find-header "CONTENT-TYPE" (mime-part-headers part))))
     (if header
-	(if as-string
-	    (or (unparse-content-type (header-value header)) "")
-	    (header-value header))
-	(when as-string ""))))
+        (if as-string
+            (or (unparse-content-type (header-value header)) "")
+            (header-value header))
+        (when as-string ""))))
 
 
 (defun find-content-disposition-header (headers)
