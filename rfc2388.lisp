@@ -439,8 +439,9 @@ is a list of (NAME . VALUE)"))
                                                      :direction :output
                                                      ;; external format for faithful I/O
                                                      ;; see <http://cl-cookbook.sourceforge.net/io.html#faith>
-                                                     #+(or :lispworks :allegro)
+                                                     #+(or :sbcl :lispworks :allegro)
                                                      :external-format
+                                                     #+sbcl :latin-1
                                                      #+:lispworks '(:latin-1 :eol-style :lf)
                                                      #+:allegro (excl:crlf-base-ef :latin1))
                              (read-until-next-boundary input boundary nil out-file))
