@@ -21,6 +21,8 @@
 ;;;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 ;;;; THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#+xcvb (module (:depends-on ("packages")))
+
 (in-package :rfc2388)
 
 
