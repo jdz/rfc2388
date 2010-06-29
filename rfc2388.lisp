@@ -364,7 +364,7 @@ is a list of (NAME . VALUE)"))
 ;;; _The_ MIME parsing
 
 
-(defgeneric parse-mime (source boundary &key recursive-p write-content-to-file)
+(defgeneric parse-mime (source boundary &key write-content-to-file)
   (:documentation
    "Parses MIME entities, returning them as a list.  Each element in the
     list is of form: (body headers), where BODY is the contents of MIME
@@ -407,12 +407,12 @@ is a list of (NAME . VALUE)"))
   headers)
 
 
-(defmethod parse-mime ((input string) separator &key (recursive-p t) (write-content-to-file t))
+(defmethod parse-mime ((input string) separator &key (write-content-to-file t))
   (with-input-from-string (stream input)
-    (parse-mime stream separator :recursive-p recursive-p :write-content-to-file write-content-to-file)))
+    (parse-mime stream separator :write-content-to-file write-content-to-file)))
 
 
-(defmethod parse-mime ((input stream) boundary &key (recursive-p t) (write-content-to-file t))
+(defmethod parse-mime ((input stream) boundary &key (write-content-to-file t))
   ;; Find the first boundary.  Return immediately if it is also the last
   ;; one.
   (unless (nth-value 1 (read-until-next-boundary input boundary t))
@@ -428,37 +428,33 @@ is a list of (NAME . VALUE)"))
                       do (setf content-type-header header 
                                (header-value header) (parse-content-type (header-value header)))
                       collect header)))
-        (if (and recursive-p 
-                 (string-equal "MULTIPART" (content-type-super (header-value content-type-header))))
-            (let ((boundary (cdr (find-parameter "BOUNDARY" (header-parameters content-type-header)))))
-              (push (make-mime-part (parse-mime input boundary) headers) result))
-            (let ((file-name (get-file-name headers)))
-              (cond ((and write-content-to-file
-                          file-name)
-                     (let ((temp-file (make-tmp-file-name)))
-                       (multiple-value-bind (text more)
-                           (with-open-file (out-file (ensure-directories-exist temp-file)
-                                                     :direction :output
-                                                     ;; external format for faithful I/O
-                                                     ;; see <http://cl-cookbook.sourceforge.net/io.html#faith>
-                                                     #+(or :sbcl :lispworks :allegro)
-                                                     :external-format
-                                                     #+sbcl :latin-1
-                                                     #+:lispworks '(:latin-1 :eol-style :lf)
-                                                     #+:allegro (excl:crlf-base-ef :latin1))
-                             (read-until-next-boundary input boundary nil out-file))
-                         (declare (ignore text))
-                         (when (and (stringp file-name)
-                                    (plusp (length file-name)))
-                           (push (make-mime-part temp-file headers) result))
-                         (when (not more)
-                           (return)))))
-                    (t
-                     (multiple-value-bind (text more)
-                         (read-until-next-boundary input boundary)
-                       (push (make-mime-part text headers) result)
-                       (when (not more)
-                         (return)))))))))
+        (let ((file-name (get-file-name headers)))
+          (cond ((and write-content-to-file
+                      file-name)
+                 (let ((temp-file (make-tmp-file-name)))
+                   (multiple-value-bind (text more)
+                       (with-open-file (out-file (ensure-directories-exist temp-file)
+                                                 :direction :output
+                                                 ;; external format for faithful I/O
+                                                 ;; see <http://cl-cookbook.sourceforge.net/io.html#faith>
+                                                 #+(or :sbcl :lispworks :allegro)
+                                                 :external-format
+                                                 #+sbcl :latin-1
+                                                 #+:lispworks '(:latin-1 :eol-style :lf)
+                                                 #+:allegro (excl:crlf-base-ef :latin1))
+                         (read-until-next-boundary input boundary nil out-file))
+                     (declare (ignore text))
+                     (when (and (stringp file-name)
+                                (plusp (length file-name)))
+                       (push (make-mime-part temp-file headers) result))
+                     (when (not more)
+                       (return)))))
+                (t
+                 (multiple-value-bind (text more)
+                     (read-until-next-boundary input boundary)
+                   (push (make-mime-part text headers) result)
+                   (when (not more)
+                     (return))))))))
     (nreverse result)))
 
 
