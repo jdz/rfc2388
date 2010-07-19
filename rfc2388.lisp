@@ -418,15 +418,13 @@ is a list of (NAME . VALUE)"))
   (unless (nth-value 1 (read-until-next-boundary input boundary t))
     (return-from parse-mime nil))
   
-  (let ((result ())
-        content-type-header)
+  (let ((result ()))
     (loop
       (let ((headers (loop
                       for header = (parse-header input)
                       while header
                       when (string-equal "CONTENT-TYPE" (header-name header))
-                      do (setf content-type-header header 
-                               (header-value header) (parse-content-type (header-value header)))
+                      do (setf (header-value header) (parse-content-type (header-value header)))
                       collect header)))
         (let ((file-name (get-file-name headers)))
           (cond ((and write-content-to-file
