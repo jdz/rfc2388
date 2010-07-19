@@ -67,7 +67,7 @@
                        (sanitize-test-string result)
                        more-p)
           (finish-output t)))))
-    
+
     (dolist (string *strings*)
       (dolist (boundary *boundaries*)
         (dolist (trailing-separator '("--" ""))

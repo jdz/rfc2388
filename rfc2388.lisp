@@ -1,7 +1,7 @@
 ;;;; -*- mode: LISP; package: RFC2388 -*-
 ;;;; Copyright (c) 2003 Janis Dzerins
 ;;;; Modifications for TBNL Copyright (c) 2004 Michael Weber and Dr. Edmund Weitz
-;;;; 
+;;;;
 ;;;; Redistribution and use in source and binary forms, with or without
 ;;;; modification, are permitted provided that the following conditions
 ;;;; are met:
@@ -38,7 +38,7 @@
 
 
 ;;; *** This actually belongs to RFC2046
-;;; 
+;;;
 (defun read-until-next-boundary (stream boundary &optional discard out-stream)
   "Reads from STREAM up to the next boundary.  Returns two values: read
    data (nil if DISCARD is true), and true if the boundary is not last
@@ -48,13 +48,13 @@
   ;;
   ;; *** This will WARN like crazy on some bad input -- should only do each
   ;; warning once.
-  
+
   (let ((length (length boundary)))
     (unless (<= 1 length 70)
       (warn "Boundary has invalid length -- must be between 1 and 70, but is: ~S" length))
     (when (lwsp-char-p (schar boundary (1- length)))
       (warn "Boundary has trailing whitespace: ~S" boundary)))
-  
+
   (flet ((run (result)
            "This one writes everything up to a boundary to RESULT stream,
             and returns false if the closing delimiter has been read, and
@@ -67,22 +67,22 @@
                  (queue-index 0)
                  char
                  (leave-char nil))
-             
+
              (flet ((write-queued-chars ()
                       (dotimes (i queue-index)
                         (write-char (schar queued-chars i) result))
                       (setf queue-index 0))
-                    
+
                     (enqueue-char ()
                       (setf (schar queued-chars queue-index) char)
                       (incf queue-index)))
-               
+
                (loop
-                 
+
                  (if leave-char
                      (setq leave-char nil)
                      (setq char (read-char stream nil nil)))
-                 
+
                  (unless char
                    (setq closed t)
                    (return))
@@ -230,7 +230,7 @@ is a list of (NAME . VALUE)"))
 
 ;;; *** I don't like this parser -- it will have to be rewritten when I
 ;;; make my state-machine parser-generator macro!
-;;; 
+;;;
 (defmethod parse-header ((stream stream) &optional (start-state :name))
   "Returns a MIME part header, or NIL, if there is no header.  Header is
    terminated by CRLF."
@@ -245,7 +245,7 @@ is a list of (NAME . VALUE)"))
         value
         parameter-name
         parameters)
-    
+
     (labels ((skip-lwsp (next-state)
                (loop
                  do (setq char (read-char stream nil nil))
@@ -265,15 +265,15 @@ is a list of (NAME . VALUE)"))
                    (lwsp-char-p char))))
 
       (loop
-        
+
         (if leave-char
             (setq leave-char nil)
             (setq char (read-char stream nil nil)))
-        
+
         ;; end of stream
         (unless char
           (return))
-        
+
         (when (char= #\return char)
           (setq char (read-char stream nil nil))
           (cond ((or (null char)
@@ -284,11 +284,11 @@ is a list of (NAME . VALUE)"))
                  (warn "LINEFEED without RETURN in header.")
                  (write-char #\return result)
                  (setq leave-char t))))
-        
+
         #-(and)
         (format t "~&S:~,'0D CH:~:[~;*~]~S~%"
                 state leave-char char)
-        
+
         (ecase state
           (1 ;; NAME
            (cond ((char= char #\:)
@@ -297,28 +297,28 @@ is a list of (NAME . VALUE)"))
                   (skip-lwsp 2))
                  (t
                   (write-char char result))))
-          
+
           (2 ;; VALUE
            (cond ((token-end-char-p char)
                   (setq value (get-output-stream-string result))
                   (skip-lwsp 3))
                  (t
                   (write-char char result))))
-          
+
           (3 ;; PARAMETER name
            (cond ((char= #\= char)
                   (setq parameter-name (get-output-stream-string result)
                         state 4))
                  (t
                   (write-char char result))))
-          
+
           (4 ;; PARAMETER value start
            (cond ((char= #\" char)
                   (setq state 5))
                  (t
                   (setq leave-char t
                         state 7))))
-          
+
           (5 ;; Quoted PARAMETER value
            (cond ((char= #\" char)
                   (setq state 6))
@@ -332,7 +332,7 @@ is a list of (NAME . VALUE)"))
                   ;; no space or semicolon after quoted parameter value
                   (setq leave-char t
                         state 3))))
-          
+
           (7 ;; Unquoted PARAMETER value
            (cond ((token-end-char-p char)
                   (collect-parameter))
@@ -386,7 +386,7 @@ is a list of (NAME . VALUE)"))
         (make-content-type (make-array sep-offset
                                        :element-type type
                                        :displaced-to string)
-                           (make-array (- (length string) (incf sep-offset)) 
+                           (make-array (- (length string) (incf sep-offset))
                                        :element-type type
                                        :displaced-to string
                                        :displaced-index-offset sep-offset))
@@ -417,7 +417,7 @@ is a list of (NAME . VALUE)"))
   ;; one.
   (unless (nth-value 1 (read-until-next-boundary input boundary t))
     (return-from parse-mime nil))
-  
+
   (let ((result ()))
     (loop
       (let ((headers (loop
@@ -479,10 +479,10 @@ is a list of (NAME . VALUE)"))
 
 
 (defun find-content-disposition-header (headers)
-  (find-if (lambda (header) 
-             (and (string-equal "CONTENT-DISPOSITION" 
+  (find-if (lambda (header)
+             (and (string-equal "CONTENT-DISPOSITION"
                                 (rfc2388:header-name header))
-                  (string-equal "FORM-DATA" 
+                  (string-equal "FORM-DATA"
                                 (rfc2388:header-value header))))
            headers))
 
