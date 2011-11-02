@@ -195,7 +195,7 @@
 
 (defun make-tmp-file-name ()
   (if (find-package :tbnl)
-      (funcall (find-symbol "MAKE-TMP-FILE-NAME" :tbnl))
+      (funcall (find-symbol #.(string '#:make-tmp-file-name) :tbnl))
       (error "WRITE-CONTENT-TO-FILE keyword argument to PARSE-MIME is supported in TBNL only at the moment.")))
 
 
