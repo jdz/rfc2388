@@ -29,6 +29,12 @@
 (in-package :rfc2388.system)
 
 (defsystem :rfc2388
+  :author "Jānis Džeriņš <jonis@latnet.lv>"
+  :version "1.5"
+  :description "Implementation of RFC 2388"
+  :long-description "
+Contains an implementation of RFC 2388, which is used to process form data
+posted with HTTP POST method using enctype \"multipart/form-data\"."
   :components ((:static-file "rfc2388.asd")
                (:file "rfc2388" :depends-on ("packages"))
                (:file "packages")))
