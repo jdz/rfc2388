@@ -39,25 +39,28 @@
             (t (write-char char out))))))
 
 
-(defun test-string (string &optional (boundary "boundary"))
+(defun test-string (string out &optional (boundary "boundary"))
   (with-input-from-string (stream string)
     (handler-bind ((simple-warning (lambda (condition)
                                      (declare (ignore condition))
                                      (format t "~&Testing: ~S (boundary ~S)~%"
                                              (sanitize-test-string string)
                                              boundary))))
-      (rfc2388::read-until-next-boundary stream boundary))))
+      (rfc2388::read-until-next-boundary stream boundary out))))
 
 
 (defun test ()
-  (declare (optimize debug))
+  (declare (optimize debug safety))
   (flet ((last-char (string)
            (declare (type simple-string string))
            (schar string (1- (length string))))
 
          (test (test expected boundary)
-           (multiple-value-bind (result more-p)
-               (test-string test boundary)
+           (let ((stream (make-string-output-stream))
+                 more-p result)
+             (setf more-p (test-string test stream boundary))
+             (setf result (get-output-stream-string stream))
+
              (unless (or (string= result expected)
                          more-p)
                (format t "~%String:   ~S (Boundary: ~S)~%Expected: ~S~%Got:      ~S~%More: ~S~%"
@@ -66,7 +69,7 @@
                        (sanitize-test-string expected)
                        (sanitize-test-string result)
                        more-p)
-          (finish-output t)))))
+               (finish-output t)))))
 
     (dolist (string *strings*)
       (dolist (boundary *boundaries*)

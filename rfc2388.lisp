@@ -39,7 +39,7 @@
 
 ;;; *** This actually belongs to RFC2046
 ;;;
-(defun read-until-next-boundary (stream boundary &optional discard out-stream)
+(defun read-until-next-boundary (stream boundary out-stream)
   "Reads from STREAM up to the next boundary.  Returns two values: read
    data (nil if DISCARD is true), and true if the boundary is not last
    (i.e., there's more data)."
@@ -180,13 +180,7 @@
                            (warn "Garbage where expecting LF!")))))))
              (not closed))))
 
-    (if discard
-        (let ((stream (make-broadcast-stream)))
-          (values nil (run stream)))
-        (let* ((stream (or out-stream (make-string-output-stream)))
-               (closed (run stream)))
-          (values (or out-stream (get-output-stream-string stream))
-                  closed)))))
+    (run out-stream)))
 
 
 (defun make-tmp-file-name ()
@@ -362,10 +356,24 @@ is a list of (NAME . VALUE)"))
 
 (defgeneric parse-mime (source boundary &key write-content-to-file)
   (:documentation
-   "Parses MIME entities, returning them as a list.  Each element in the
-    list is of form: (body headers), where BODY is the contents of MIME
-    part, and HEADERS are all headers for that part.  BOUNDARY is a string
-    used to separate MIME entities."))
+   "Parses MIME entities, returning them as a list.
+
+Each element in the list is of form: (body headers), where BODY is the
+contents of MIME part (value depends on WRITE-CONTENT-TO-FILE, see
+below), and HEADERS are all headers for that part.  BOUNDARY is a
+string used to separate MIME entities.
+
+WRITE-CONTENT-TO-FILE can have one of the following values:
+
+  NIL: MIME part is read into a string, and returned as is.
+
+  T: A temporary file is created, MIME part is written to it, and the
+  file path is returned.
+
+  A function designator: function is called, and should return either
+  an open [file] stream or a pathname designator, where the MIME part
+  content should be written.  In both cases the MIME part is written
+  to the file, and its pathname is returned."))
 
 
 (defstruct (content-type (:type list)
@@ -407,50 +415,72 @@ is a list of (NAME . VALUE)"))
   (with-input-from-string (stream input)
     (parse-mime stream separator :write-content-to-file write-content-to-file)))
 
+(defun parse-headers (input)
+  (loop for header = (parse-header input)
+        while header
+        when (string-equal "CONTENT-TYPE" (header-name header))
+          do (setf (header-value header)
+                   (parse-content-type (header-value header)))
+        collect header))
 
 (defmethod parse-mime ((input stream) boundary &key (write-content-to-file t))
+  (check-type write-content-to-file
+              (or (eql t) null symbol function))
   ;; Find the first boundary.  Return immediately if it is also the last
   ;; one.
-  (unless (nth-value 1 (read-until-next-boundary input boundary t))
+  (unless (read-until-next-boundary input boundary (make-broadcast-stream))
     (return-from parse-mime nil))
 
   (let ((result ()))
     (loop
-      (let ((headers (loop
-                      for header = (parse-header input)
-                      while header
-                      when (string-equal "CONTENT-TYPE" (header-name header))
-                      do (setf (header-value header) (parse-content-type (header-value header)))
-                      collect header)))
-        (let ((file-name (get-file-name headers)))
-          (cond ((and write-content-to-file
-                      file-name)
-                 (let ((temp-file (make-tmp-file-name)))
-                   (multiple-value-bind (text more)
-                       (with-open-file (out-file (ensure-directories-exist temp-file)
-                                                 :direction :output
-                                                 ;; external format for faithful I/O
-                                                 ;; see <http://cl-cookbook.sourceforge.net/io.html#faith>
-                                                 #+(or :sbcl :lispworks :allegro :openmcl)
-                                                 :external-format
-                                                 #+sbcl :latin-1
-                                                 #+:lispworks '(:latin-1 :eol-style :lf)
-                                                 #+:allegro (excl:crlf-base-ef :latin1)
-                                                 #+:openmcl '(:character-encoding :iso-8859-1
-                                                              :line-termination :unix))
-                         (read-until-next-boundary input boundary nil out-file))
-                     (declare (ignore text))
-                     (when (and (stringp file-name)
-                                (plusp (length file-name)))
-                       (push (make-mime-part temp-file headers) result))
-                     (when (not more)
-                       (return)))))
-                (t
-                 (multiple-value-bind (text more)
-                     (read-until-next-boundary input boundary)
-                   (push (make-mime-part text headers) result)
-                   (when (not more)
-                     (return))))))))
+      (let* ((headers (parse-headers input))
+             (file-name (get-file-name headers)))
+        (cond ((and write-content-to-file
+                    ;; This is how we detect that current part is a file.
+                    file-name)
+
+               (let ((destination
+                       (cond ((eq 't write-content-to-file)
+                              ;; Old behaviour.
+                              (ensure-directories-exist (make-tmp-file-name)))
+                             ((or (symbolp write-content-to-file)
+                                  (functionp write-content-to-file))
+                              (funcall write-content-to-file headers)))))
+
+                 (flet ((process-part (stream)
+                          (let ((more (read-until-next-boundary input boundary stream)))
+                            (push (make-mime-part (pathname stream) headers)
+                                  result)
+                            (unless more
+                              (return)))))
+                   (if (and (streamp destination)
+                            (open-stream-p destination))
+                       (let ((abort t))
+                         (unwind-protect
+                              (prog1 (process-part destination)
+                                (setf abort nil))
+                           (close destination :abort abort)))
+                       (with-open-file
+                           (out-file destination
+                                     :direction :output
+                                     ;; external format for faithful I/O see
+                                     ;; <http://cl-cookbook.sourceforge.net/io.html#faith>
+                                     #+(or sbcl lispworks allegro openmcl ccl)
+                                     :external-format
+                                     #+sbcl :latin-1
+                                     #+lispworks '(:latin-1 :eol-style :lf)
+                                     #+allegro (excl:crlf-base-ef :latin1)
+                                     #+(or openmcl ccl) '(:character-encoding :iso-8859-1
+                                                          :line-termination :unix))
+                         (process-part out-file))))))
+              (t
+               (let* ((stream (make-string-output-stream))
+                      (more (read-until-next-boundary input boundary stream)))
+                 (push (make-mime-part (get-output-stream-string stream)
+                                       headers)
+                       result)
+                 (unless more
+                   (return)))))))
     (nreverse result)))
 
 
