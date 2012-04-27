@@ -1,4 +1,4 @@
-;;;; -*- mode: LISP; package: RFC2388 -*-
+;;;; -*- mode: LISP; -*-
 ;;;; Copyright (c) 2003 Janis Dzerins
 ;;;;
 ;;;; Redistribution and use in source and binary forms, with or without
@@ -20,15 +20,7 @@
 ;;;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 ;;;; THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (unless (find-package :rfc2388.system)
-    (defpackage :rfc2388.system
-      (:documentation "ASDF System package for rfc2388")
-      (:use :common-lisp :asdf))))
-
-(in-package :rfc2388.system)
-
-(defsystem :rfc2388
+(asdf:defsystem :rfc2388
   :author "Jānis Džeriņš <jonis@latnet.lv>"
   :version "1.5"
   :description "Implementation of RFC 2388"
