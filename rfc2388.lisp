@@ -401,7 +401,14 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
   (let ((result ()))
     (loop
       (let* ((headers (parse-headers input))
-             (file-name (get-file-name headers)))
+             (content-disposition (find-header "Content-Disposition" headers))
+             (disposition-parameters (header-parameters content-disposition))
+             (field-name (cdr (find-parameter "name" disposition-parameters)))
+             (file-name (cdr (find-parameter "filename"
+                                             disposition-parameters)))
+             ;; XXX Content type header parameters are not used.
+             (content-type (header-value (find-header "Content-Type" headers))))
+        (assert (string-equal "form-data" (header-value content-disposition)))
         (cond ((and write-content-to-file
                     ;; This is how we detect that current part is a file.
                     file-name)
@@ -412,7 +419,11 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
                               (ensure-directories-exist (make-tmp-file-name)))
                              ((or (symbolp write-content-to-file)
                                   (functionp write-content-to-file))
-                              (funcall write-content-to-file headers)))))
+                              (funcall write-content-to-file
+                                       :field-name field-name
+                                       :file-name file-name
+                                       :content-type content-type
+                                       :allow-other-keys t)))))
 
                  (flet ((process-part (stream)
                           (let ((more (read-until-next-boundary input boundary stream)))
