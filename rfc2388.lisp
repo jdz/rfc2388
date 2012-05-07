@@ -375,36 +375,6 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
   content should be written.  In both cases the MIME part is written
   to the file, and its pathname is returned."))
 
-
-(defstruct (content-type (:type list)
-                         (:constructor make-content-type (super sub)))
-  super
-  sub)
-
-
-(defun parse-content-type (string)
-  "Returns content-type which is parsed from STRING."
-  (let ((sep-offset (position #\/ string))
-        (type (array-element-type string)))
-    (if (numberp sep-offset)
-        (make-content-type (make-array sep-offset
-                                       :element-type type
-                                       :displaced-to string)
-                           (make-array (- (length string) (incf sep-offset))
-                                       :element-type type
-                                       :displaced-to string
-                                       :displaced-index-offset sep-offset))
-        (make-content-type string nil))))
-
-
-(defun unparse-content-type (ct)
-  "Returns content-type CT in string representation."
-  (let ((super (content-type-super ct))
-        (sub (content-type-sub ct)))
-    (cond ((and super sub)
-           (concatenate 'string super "/" sub))
-          (t (or super "")))))
-
 (defstruct (mime-part (:type list)
                       (:constructor make-mime-part (contents headers)))
   contents
@@ -418,9 +388,6 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
 (defun parse-headers (input)
   (loop for header = (parse-header input)
         while header
-        when (string-equal "CONTENT-TYPE" (header-name header))
-          do (setf (header-value header)
-                   (parse-content-type (header-value header)))
         collect header))
 
 (defmethod parse-mime ((input stream) boundary &key (write-content-to-file t))
@@ -494,14 +461,20 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
   (assoc name params :test #'string-equal))
 
 
+;;; XXX This is not quite right: content-type also has parameters, and
+;;; if AS-STRING is true, only the type/subtype will be returned (and
+;;; parameters dropped).
+;;;
+;;; XXX Remove this and following two functions altogether when
+;;; Hunchentoot is updated.
 (defun content-type (part &key as-string)
   "Returns the Content-Type header of mime-part PART."
   (let ((header (find-header "CONTENT-TYPE" (mime-part-headers part))))
-    (if header
-        (if as-string
-            (or (unparse-content-type (header-value header)) "")
-            (header-value header))
-        (when as-string ""))))
+    (if as-string
+        (if header
+            (header-value header)
+            "")
+        header)))
 
 
 (defun find-content-disposition-header (headers)
