@@ -407,12 +407,20 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
              (file-name (cdr (find-parameter "filename"
                                              disposition-parameters)))
              ;; XXX Content type header parameters are not used.
-             (content-type (header-value (find-header "Content-Type" headers))))
+             (content-type (let ((header (find-header "Content-Type" headers)))
+                             (when header (header-value header))))
+             more)
         (assert (string-equal "form-data" (header-value content-disposition)))
-        (cond ((and write-content-to-file
-                    ;; This is how we detect that current part is a file.
-                    file-name)
+        (cond ((and file-name
+                    (zerop (length file-name)))
+               ;; File name is empty.  This usually means that the
+               ;; file upload field is empty.  In this case we ignore
+               ;; this field (e.g., it will not be included in the result).
+               (setf more (read-until-next-boundary input boundary
+                                                    (make-broadcast-stream))))
 
+              ((and file-name
+                    write-content-to-file)
                (let ((destination
                        (cond ((eq 't write-content-to-file)
                               ;; Old behaviour.
@@ -426,11 +434,11 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
                                        :allow-other-keys t)))))
 
                  (flet ((process-part (stream)
-                          (let ((more (read-until-next-boundary input boundary stream)))
-                            (push (make-mime-part (pathname stream) headers)
-                                  result)
-                            (unless more
-                              (return)))))
+                          (setf more (read-until-next-boundary input
+                                                               boundary
+                                                               stream))
+                          (push (make-mime-part (pathname stream) headers)
+                                result)))
                    (if (and (streamp destination)
                             (open-stream-p destination))
                        (let ((abort t))
@@ -452,13 +460,13 @@ WRITE-CONTENT-TO-FILE can have one of the following values:
                                                           :line-termination :unix))
                          (process-part out-file))))))
               (t
-               (let* ((stream (make-string-output-stream))
-                      (more (read-until-next-boundary input boundary stream)))
+               (let ((stream (make-string-output-stream)))
+                 (setf more (read-until-next-boundary input boundary stream))
                  (push (make-mime-part (get-output-stream-string stream)
                                        headers)
-                       result)
-                 (unless more
-                   (return)))))))
+                       result))))
+        (unless more
+          (return))))
     (nreverse result)))
 
 
