@@ -21,7 +21,7 @@
 ;;;; THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (asdf:defsystem :rfc2388
-  :author "Jānis Džeriņš <jonis@latnet.lv>"
+  :author "Janis Dzerins <jonis@latnet.lv>"
   :version "1.5"
   :description "Implementation of RFC 2388"
   :long-description "
