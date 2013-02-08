@@ -81,11 +81,7 @@
 
                  (if leave-char
                      (setq leave-char nil)
-                     (setq char (read-char stream nil nil)))
-
-                 (unless char
-                   (setq closed t)
-                   (return))
+                     (setq char (read-char stream)))
 
                   #-(and)
                   (format t "~&S:~D QI:~D BI:~2,'0D CH:~:[~;*~]~S~%"
