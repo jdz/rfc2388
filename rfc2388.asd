@@ -23,6 +23,7 @@
 (asdf:defsystem :rfc2388
   :author "Janis Dzerins <jonis@latnet.lv>"
   :version "1.5"
+  :licence "Simplified BSD"
   :description "Implementation of RFC 2388"
   :long-description "
 Contains an implementation of RFC 2388, which is used to process form data
