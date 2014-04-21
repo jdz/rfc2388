@@ -199,12 +199,19 @@
 ;;; Header parsing
 
 
-(defstruct (header (:type list)
-                   (:constructor make-header (name value parameters)))
-  name
-  value
-  parameters)
+(defstruct (header (:constructor make-header (name value parameters)))
+  (name (error "HEADER-NAME not specified.")
+   :type string
+   :read-only t)
+  (value (error "HEADER-VALUE not specified.")
+   :type (or string content-type)
+   :read-only t)
+  (parameters nil
+   :type list
+   :read-only t))
 
+(defun header-parameter (header name)
+  (cdr (assoc name (header-parameters header) :test #'string=)))
 
 (defun skip-linear-whitespace (string &key (start 0) end)
   "Returns the position of first non-linear-whitespace character in STRING
@@ -368,10 +375,13 @@ is a list of (NAME . VALUE)"))
     used to separate MIME entities."))
 
 
-(defstruct (content-type (:type list)
-                         (:constructor make-content-type (super sub)))
-  super
-  sub)
+(defstruct (content-type (:constructor make-content-type (super sub)))
+  (super (error "CONTENT-TYPE-SUPER not initialized.")
+   :type string
+   :read-only t)
+  (sub nil
+   :type (or null string)
+   :read-only t))
 
 
 (defun parse-content-type (string)
@@ -395,12 +405,16 @@ is a list of (NAME . VALUE)"))
         (sub (content-type-sub ct)))
     (cond ((and super sub)
            (concatenate 'string super "/" sub))
-          (t (or super "")))))
+          (t super))))
 
-(defstruct (mime-part (:type list)
-                      (:constructor make-mime-part (contents headers)))
-  contents
-  headers)
+
+(defstruct (mime-part (:constructor make-mime-part (contents headers)))
+  (contents (error "MIME-PART-CONTENTS not initialized.")
+   :type t
+   :read-only t)
+  (headers nil
+   :type list
+   :read-only t))
 
 
 (defmethod parse-mime ((input string) separator &key (write-content-to-file t))
@@ -469,7 +483,7 @@ is a list of (NAME . VALUE)"))
   (let ((header (find-header "CONTENT-TYPE" (mime-part-headers part))))
     (if header
         (if as-string
-            (or (unparse-content-type (header-value header)) "")
+            (unparse-content-type (header-value header))
             (header-value header))
         (when as-string ""))))
 
