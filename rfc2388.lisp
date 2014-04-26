@@ -193,7 +193,7 @@
 
 (defstruct (header (:constructor make-header (name value parameters)))
   (name (error "HEADER-NAME not specified.")
-   :type string
+   :type (or null string)
    :read-only t)
   (value (error "HEADER-VALUE not specified.")
    :type string
