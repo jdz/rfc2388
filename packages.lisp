@@ -32,8 +32,11 @@
    #:header-name
    #:header-value
    #:header-parameters
+   #:header-parameter
 
    #:content-type
+   #:content-type-super
+   #:content-type-sub
    #:find-header
    #:find-parameter
    #:find-content-disposition-header

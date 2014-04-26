@@ -24,18 +24,14 @@
 #+xcvb (module (:depends-on ("packages")))
 
 (in-package :rfc2388)
-
-
 
 ;;; Utility functions
-
 
 (defun lwsp-char-p (char)
   "Returns true if CHAR is a linear-whitespace-char (LWSP-char).  Either
    space or tab, in short."
   (or (char= char #\space)
       (char= char #\tab)))
-
 
 ;;; *** This actually belongs to RFC2046
 ;;;
@@ -188,29 +184,31 @@
           (values (or out-stream (get-output-stream-string stream))
                   closed)))))
 
-
 (defun make-tmp-file-name ()
   (if (find-package :tbnl)
       (funcall (find-symbol #.(string '#:make-tmp-file-name) :tbnl))
       (error "WRITE-CONTENT-TO-FILE keyword argument to PARSE-MIME is supported in TBNL only at the moment.")))
-
-
 
 ;;; Header parsing
 
+(defstruct (header (:constructor make-header (name value parameters)))
+  (name (error "HEADER-NAME not specified.")
+   :type (or null string)
+   :read-only t)
+  (value (error "HEADER-VALUE not specified.")
+   :type string
+   :read-only t)
+  (parameters nil
+   :type list
+   :read-only t))
 
-(defstruct (header (:type list)
-                   (:constructor make-header (name value parameters)))
-  name
-  value
-  parameters)
-
+(defun header-parameter (header name)
+  (cdr (assoc name (header-parameters header) :test #'string=)))
 
 (defun skip-linear-whitespace (string &key (start 0) end)
   "Returns the position of first non-linear-whitespace character in STRING
    bound by START and END."
   (position-if-not #'lwsp-char-p string :start start :end end))
-
 
 (defgeneric parse-header (source &optional start-state)
   (:documentation "Parses SOURCE and returs a single MIME header.
@@ -218,11 +216,9 @@
 Header is a list of the form (NAME VALUE PARAMETERS), PARAMETERS
 is a list of (NAME . VALUE)"))
 
-
 (defmethod parse-header ((source string) &optional (start-state :name))
   (with-input-from-string (in source)
     (parse-header in start-state)))
-
 
 ;;; *** I don't like this parser -- it will have to be rewritten when I
 ;;; make my state-machine parser-generator macro!
@@ -241,6 +237,8 @@ is a list of (NAME . VALUE)"))
         value
         parameter-name
         parameters)
+    ;; For compilers which cannot figure it out.
+    (declare (type (or null string) name value))
 
     (labels ((skip-lwsp (next-state)
                (loop
@@ -346,19 +344,16 @@ is a list of (NAME . VALUE)"))
              (warn "Parameter without value in header.")
              (push (cons name nil) parameters))))
         ((5 6 7)
-         (push (cons parameter-name (get-output-stream-string result)) parameters))))
+         (push (cons parameter-name (get-output-stream-string result))
+               parameters))))
 
-    (if (and (or (null name)
-                 (zerop (length name)))
+    (if (and (zerop (length name))
              (null value)
              (null parameters))
         nil
         (make-header name value parameters))))
-
-
 
 ;;; _The_ MIME parsing
-
 
 (defgeneric parse-mime (source boundary &key write-content-to-file)
   (:documentation
@@ -367,46 +362,17 @@ is a list of (NAME . VALUE)"))
     part, and HEADERS are all headers for that part.  BOUNDARY is a string
     used to separate MIME entities."))
 
-
-(defstruct (content-type (:type list)
-                         (:constructor make-content-type (super sub)))
-  super
-  sub)
-
-
-(defun parse-content-type (string)
-  "Returns content-type which is parsed from STRING."
-  (let ((sep-offset (position #\/ string))
-        (type (array-element-type string)))
-    (if (numberp sep-offset)
-        (make-content-type (make-array sep-offset
-                                       :element-type type
-                                       :displaced-to string)
-                           (make-array (- (length string) (incf sep-offset))
-                                       :element-type type
-                                       :displaced-to string
-                                       :displaced-index-offset sep-offset))
-        (make-content-type string nil))))
-
-
-(defun unparse-content-type (ct)
-  "Returns content-type CT in string representation."
-  (let ((super (content-type-super ct))
-        (sub (content-type-sub ct)))
-    (cond ((and super sub)
-           (concatenate 'string super "/" sub))
-          (t (or super "")))))
-
-(defstruct (mime-part (:type list)
-                      (:constructor make-mime-part (contents headers)))
-  contents
-  headers)
-
+(defstruct (mime-part (:constructor make-mime-part (contents headers)))
+  (contents (error "MIME-PART-CONTENTS not initialized.")
+   :type t
+   :read-only t)
+  (headers nil
+   :type list
+   :read-only t))
 
 (defmethod parse-mime ((input string) separator &key (write-content-to-file t))
   (with-input-from-string (stream input)
     (parse-mime stream separator :write-content-to-file write-content-to-file)))
-
 
 (defmethod parse-mime ((input stream) boundary &key (write-content-to-file t))
   ;; Find the first boundary.  Return immediately if it is also the last
@@ -417,11 +383,9 @@ is a list of (NAME . VALUE)"))
   (let ((result ()))
     (loop
       (let ((headers (loop
-                      for header = (parse-header input)
-                      while header
-                      when (string-equal "CONTENT-TYPE" (header-name header))
-                      do (setf (header-value header) (parse-content-type (header-value header)))
-                      collect header)))
+                       for header = (parse-header input)
+                       while header
+                       collect header)))
         (let ((file-name (get-file-name headers)))
           (cond ((and write-content-to-file
                       file-name)
@@ -453,36 +417,32 @@ is a list of (NAME . VALUE)"))
                      (return))))))))
     (nreverse result)))
 
-
 (defun find-header (label headers)
   "Find header by label from set of headers."
   (find label headers :key #'rfc2388:header-name :test #'string-equal))
-
 
 (defun find-parameter (name params)
   "Find header parameter by name from set of parameters."
   (assoc name params :test #'string-equal))
 
-
 (defun content-type (part &key as-string)
   "Returns the Content-Type header of mime-part PART."
-  (let ((header (find-header "CONTENT-TYPE" (mime-part-headers part))))
-    (if header
-        (if as-string
-            (or (unparse-content-type (header-value header)) "")
-            (header-value header))
-        (when as-string ""))))
-
+  (let ((header (find-header "Content-Type" (mime-part-headers part))))
+    (unless header
+      (error "MIME part ~S does not have Content-Type header" part))
+    (when as-string
+      (warn ":AS-STRING parameter to CONTENT-TYPE is deprecated"))
+    (header-value header)))
 
 (defun find-content-disposition-header (headers)
   (find-if (lambda (header)
-             (and (string-equal "CONTENT-DISPOSITION"
+             (and (string-equal "Content-Disposition"
                                 (rfc2388:header-name header))
-                  (string-equal "FORM-DATA"
+                  (string-equal "form-data"
                                 (rfc2388:header-value header))))
            headers))
 
-
 (defun get-file-name (headers)
-  (cdr (find-parameter "FILENAME"
-                       (header-parameters (find-content-disposition-header headers)))))
+  (let* ((content-disposition (find-content-disposition-header headers))
+         (parameters (header-parameters content-disposition)))
+    (cdr (find-parameter "filename" parameters))))
