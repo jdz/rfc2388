@@ -431,13 +431,15 @@ is a list of (NAME . VALUE)"))
                                                  :direction :output
                                                  ;; external format for faithful I/O
                                                  ;; see <http://cl-cookbook.sourceforge.net/io.html#faith>
-                                                 #+(or :sbcl :lispworks :allegro :openmcl)
+                                                 #+(or :sbcl :lispworks :allegro :openmcl :clisp)
                                                  :external-format
                                                  #+sbcl :latin-1
                                                  #+:lispworks '(:latin-1 :eol-style :lf)
                                                  #+:allegro (excl:crlf-base-ef :latin1)
                                                  #+:openmcl '(:character-encoding :iso-8859-1
-                                                              :line-termination :unix))
+                                                              :line-termination :unix)
+                                                 #+:clisp (ext:make-encoding :charset 'charset:iso-8859-1
+                                                                             :line-terminator :unix))
                          (read-until-next-boundary input boundary nil out-file))
                      (declare (ignore text))
                      (when (and (stringp file-name)
